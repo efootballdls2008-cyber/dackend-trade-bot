@@ -17,7 +17,8 @@ Complete guide to all documentation files in this project.
 - [MIGRATION-SUMMARY.md](#migration-summarymd) - Technical migration details
 
 ### Deployment
-- [DEPLOYMENT-CHECKLIST.md](#deployment-checklistmd) - Production deployment guide
+- [RAILWAY-DEPLOYMENT.md](#railway-deploymentmd) - Step-by-step Railway backend deployment
+- [DEPLOYMENT-CHECKLIST.md](#deployment-checklistmd) - Production deployment checklist
 
 ### Admin
 - [README-ADMIN.md](#readme-adminmd) - Admin dashboard documentation
@@ -144,7 +145,24 @@ Complete guide to all documentation files in this project.
 - Maintenance schedule
 - Emergency contacts
 
-**When to use:** Preparing for or executing a production deployment
+**When to use:** Preparing for or executing a production deployment (generic / self-hosted)
+
+---
+
+### RAILWAY-DEPLOYMENT.md
+**Purpose:** Step-by-step Railway backend deployment  
+**Audience:** DevOps, developers deploying the API to Railway  
+**Contents:**
+- Railway account and project setup
+- Monorepo root directory configuration
+- MySQL service setup on Railway
+- Environment variable mapping
+- Deploy verification and health checks
+- Vercel frontend connection
+- CLI migration scripts
+- Troubleshooting guide
+
+**When to use:** Deploying `schwab-dackend` to Railway for the first time or redeploying
 
 ---
 
@@ -183,9 +201,10 @@ Complete guide to all documentation files in this project.
 3. Check [ARCHITECTURE.md](#architecturemd) - New architecture
 
 ### I'm deploying to production
-1. Review [DEPLOYMENT-CHECKLIST.md](#deployment-checklistmd) - Complete checklist
-2. Check [SETUP.md](#setupmd) - Configuration details
-3. Verify [ARCHITECTURE.md](#architecturemd) - Deployment architecture
+1. Follow [RAILWAY-DEPLOYMENT.md](#railway-deploymentmd) - Railway step-by-step guide
+2. Review [DEPLOYMENT-CHECKLIST.md](#deployment-checklistmd) - Complete checklist
+3. Check [SETUP.md](#setupmd) - Configuration details
+4. Verify [ARCHITECTURE.md](#architecturemd) - Deployment architecture
 
 ### I'm troubleshooting an issue
 1. Check [QUICKSTART.md](#quickstartmd) - Common issues
@@ -273,8 +292,12 @@ After running `npm run create-admin admin@schwab.com admin123 Admin User`:
 → [ARCHITECTURE.md](#architecturemd) - Security Layers
 
 **Deployment guide?**
-→ [DEPLOYMENT-CHECKLIST.md](#deployment-checklistmd) - Complete guide  
+→ [RAILWAY-DEPLOYMENT.md](#railway-deploymentmd) - Railway step-by-step  
+→ [DEPLOYMENT-CHECKLIST.md](#deployment-checklistmd) - Complete checklist  
 → [SETUP.md](#setupmd) - Production Deployment
+
+**Railway deployment?**
+→ [RAILWAY-DEPLOYMENT.md](#railway-deploymentmd) - Full guide
 
 **Troubleshooting?**
 → [QUICKSTART.md](#quickstartmd) - Common Issues  
@@ -301,6 +324,7 @@ After running `npm run create-admin admin@schwab.com admin123 Admin User`:
 | CHANGES-SUMMARY.md | ✅ Complete | Current | 100% |
 | MIGRATION-SUMMARY.md | ✅ Complete | Current | 100% |
 | DEPLOYMENT-CHECKLIST.md | ✅ Complete | Current | 100% |
+| RAILWAY-DEPLOYMENT.md | ✅ Complete | Current | 100% |
 | README-ADMIN.md | ⚠️ Existing | Previous | 90% |
 
 ---
@@ -319,9 +343,10 @@ After running `npm run create-admin admin@schwab.com admin123 Admin User`:
 3. ARCHITECTURE.md (review changes)
 
 ### For DevOps/Deployment
-1. DEPLOYMENT-CHECKLIST.md (30 min)
-2. SETUP.md (production sections)
-3. ARCHITECTURE.md (deployment section)
+1. RAILWAY-DEPLOYMENT.md (30 min)
+2. DEPLOYMENT-CHECKLIST.md (30 min)
+3. SETUP.md (production sections)
+4. ARCHITECTURE.md (deployment section)
 
 ### For Administrators
 1. README-ADMIN.md (20 min)

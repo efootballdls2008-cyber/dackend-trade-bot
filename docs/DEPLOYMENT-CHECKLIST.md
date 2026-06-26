@@ -2,6 +2,10 @@
 
 Use this checklist to ensure everything is properly configured before deploying.
 
+> **Deploying the backend to Railway?** See [RAILWAY-DEPLOYMENT.md](./RAILWAY-DEPLOYMENT.md) for the full step-by-step guide (Railway dashboard, MySQL, env vars, Vercel wiring).
+
+---
+
 ## Pre-Deployment
 
 ### Backend Configuration
