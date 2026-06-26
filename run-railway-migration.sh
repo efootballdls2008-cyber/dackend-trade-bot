@@ -39,8 +39,8 @@ echo ""
 echo "🔄 Running migration via Railway CLI..."
 echo ""
 
-# Run the migration using Railway's environment
-railway run node migrate-production.js
+# Pull TCP proxy vars from the MySQL service (not the backend service)
+railway run --service MySQL node migrate-production.js
 
 if [ $? -eq 0 ]; then
     echo ""

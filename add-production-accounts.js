@@ -1,21 +1,10 @@
 /**
  * Add Production Platform Accounts Script
- * Run after migration: RAILWAY_MYSQL_PASSWORD=your_password node add-production-accounts.js
+ * Run: railway run --service MySQL node add-production-accounts.js
  */
 
 const mysql = require('mysql2/promise');
-
-// Railway Production Database Configuration
-const RAILWAY_CONFIG = {
-  host: 'mysql-production-b71f.up.railway.app',
-  port: 3306,
-  database: 'railway',
-  user: 'root',
-  password: process.env.RAILWAY_MYSQL_PASSWORD || 'YOUR_RAILWAY_PASSWORD_HERE',
-  ssl: {
-    rejectUnauthorized: false
-  }
-};
+const { resolveRailwayMysqlConfig } = require('./railway-mysql-config');
 
 // ⚠️ IMPORTANT: Replace these with your REAL production account details
 const PRODUCTION_ACCOUNTS = [
@@ -58,13 +47,14 @@ const PRODUCTION_ACCOUNTS = [
 
 async function addProductionAccounts() {
   console.log('🏦 Adding Production Platform Accounts...');
-  console.log(`📡 Connecting to: ${RAILWAY_CONFIG.host}:${RAILWAY_CONFIG.port}`);
-  
+
   let connection;
-  
+
   try {
-    // Create connection
-    connection = await mysql.createConnection(RAILWAY_CONFIG);
+    const config = resolveRailwayMysqlConfig();
+    console.log(`📡 Connecting to: ${config.host}:${config.port}`);
+
+    connection = await mysql.createConnection(config);
     console.log('✅ Connected to Railway MySQL database');
     
     // Check if accounts already exist
@@ -156,17 +146,6 @@ async function addProductionAccounts() {
       console.log('🔌 Database connection closed');
     }
   }
-}
-
-// Check if password is provided
-if (!process.env.RAILWAY_MYSQL_PASSWORD && RAILWAY_CONFIG.password === 'YOUR_RAILWAY_PASSWORD_HERE') {
-  console.error('❌ Railway MySQL password not provided!');
-  console.error('');
-  console.error('Please run with:');
-  console.error('RAILWAY_MYSQL_PASSWORD=your_password node add-production-accounts.js');
-  console.error('');
-  console.error('⚠️  BEFORE RUNNING: Edit this file and replace placeholder account details with REAL production values!');
-  process.exit(1);
 }
 
 // Check if using placeholder values

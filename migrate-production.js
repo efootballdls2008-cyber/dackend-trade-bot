@@ -1,27 +1,20 @@
 /**
  * Production Migration Script for Railway Database
- * Run: railway run node migrate-production-simple.js
+ * Run: railway run --service MySQL node migrate-production.js
  */
 
 const mysql = require('mysql2/promise');
+const { resolveRailwayMysqlConfig } = require('./railway-mysql-config');
 
 async function runProductionMigration() {
   console.log('🚀 Starting Railway Production Database Migration...');
-  
-  // Use Railway environment variables with fallback to public URL
-  const config = {
-    host: process.env.RAILWAY_TCP_PROXY_DOMAIN || 'turntable.proxy.rlwy.net',
-    port: parseInt(process.env.RAILWAY_TCP_PROXY_PORT) || 47995,
-    database: process.env.MYSQLDATABASE || 'railway',
-    user: process.env.MYSQLUSER || 'root',
-    password: process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD,
-  };
-  
-  console.log(`📡 Connecting to: ${config.host}:${config.port}`);
-  
+
   let connection;
-  
+
   try {
+    const config = resolveRailwayMysqlConfig();
+    console.log(`📡 Connecting to: ${config.host}:${config.port}`);
+
     // Create connection
     connection = await mysql.createConnection(config);
     console.log('✅ Connected to Railway MySQL database');

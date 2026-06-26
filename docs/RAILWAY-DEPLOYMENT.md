@@ -47,10 +47,10 @@ Example production URL (from existing config): `https://schwab-dackend-productio
 
 Before you start:
 
-- [ ] GitHub account with this repo pushed to GitHub
-- [ ] [Railway account](https://railway.app) (sign in with GitHub)
-- [ ] Strong passwords ready for `JWT_SECRET` and `ADMIN_SEED_PASSWORD`
-- [ ] Production URLs for your Vercel client and admin apps (for CORS)
+- [x] GitHub account with this repo pushed to GitHub
+- [x] [Railway account](https://railway.app) (sign in with GitHub)
+- [x] Strong passwords ready for `JWT_SECRET` and `ADMIN_SEED_PASSWORD`
+- [x] Production URLs for your Vercel client and admin apps (for CORS)
 
 ---
 
@@ -388,22 +388,18 @@ Select your project and the **backend service** when prompted.
 ./run-railway-migration.sh
 ```
 
-Or directly:
+Or directly (must use the **MySQL** service so the TCP proxy vars are available):
 
 ```bash
-railway run node migrate-production.js
+railway run --service MySQL node migrate-production.js
 ```
 
 ### Seed platform accounts (optional)
 
-```bash
-railway run node add-production-accounts.js
-```
-
-Or with a password env var:
+Edit `add-production-accounts.js` with real bank/wallet details first, then:
 
 ```bash
-RAILWAY_MYSQL_PASSWORD=your_password node add-production-accounts.js
+railway run --service MySQL node add-production-accounts.js
 ```
 
 ### Useful CLI commands
@@ -482,10 +478,16 @@ The server sets `trust proxy` for Railway's load balancer. If rate limits seem w
 
 ### CLI migration fails
 
+| Symptom | Fix |
+|---------|-----|
+| `Connection lost: The server closed the connection` | You are likely linked to the backend service, which only exposes the internal `mysql.railway.internal` host. Run migrations with `railway run --service MySQL node migrate-production.js` instead. |
+| `No public MySQL endpoint found` | Same fix — pass `--service MySQL` so Railway injects `RAILWAY_TCP_PROXY_DOMAIN` / `RAILWAY_TCP_PROXY_PORT`. |
+
 ```bash
-railway status          # confirm project is linked
-railway ps              # confirm MySQL is running
-railway connect mysql   # test direct DB access
+railway status                              # confirm project is linked
+railway ps                                  # confirm MySQL is running
+railway run --service MySQL node migrate-production.js
+railway connect mysql                       # test direct DB access
 ```
 
 Ensure you run commands from the `schwab-dackend/` directory after `railway link`.
