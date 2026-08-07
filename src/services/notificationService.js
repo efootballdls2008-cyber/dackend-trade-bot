@@ -5,6 +5,8 @@
 const pool = require('../db/pool');
 const socketService = require('../socket/socketService');
 const emailService = require('./emailService');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const { shouldNotifyAdmin } = require('../utils/platformGuards');
 
 class NotificationService {
   constructor() {
@@ -74,6 +76,11 @@ class NotificationService {
     metadata = null
   }) {
     try {
+      const platformSettings = await getPlatformSettings();
+      if (!shouldNotifyAdmin(type, platformSettings)) {
+        return null;
+      }
+
       const [result] = await pool.query(
         `INSERT INTO admin_notifications (title, message, type, priority, related_id, related_type, user_id, metadata)
          VALUES (?,?,?,?,?,?,?,?)`,
@@ -122,11 +129,13 @@ class NotificationService {
       sendEmail: true
     });
 
-    // Admin notification
-    if (status === 'completed') {
+    // Admin notification — pending submissions and completed deposits
+    if (status === 'pending' || status === 'completed') {
       await this.createAdminNotification({
-        title: 'New User Deposit',
-        message: `User has deposited ${currency} ${amount}`,
+        title: status === 'pending' ? 'New Deposit Submitted' : 'New User Deposit',
+        message: status === 'pending'
+          ? `User submitted a deposit of ${currency} ${amount} (pending review).`
+          : `User has deposited ${currency} ${amount}`,
         type: 'user_deposit',
         priority: 'medium',
         relatedId: tx_id,

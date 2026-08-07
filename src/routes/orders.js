@@ -5,6 +5,13 @@ const validate = require('../middleware/validate');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const createUserNotification = require('../utils/createUserNotification');
 const emailService = require('../services/emailService');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const {
+  assertPlatformOpen,
+  assertTradingEnabled,
+  assertKycIfRequired,
+  calcTradingFee,
+} = require('../utils/platformGuards');
 
 const router = express.Router();
 router.use(authenticate);
@@ -54,6 +61,20 @@ router.post(
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
+      if (!(await assertPlatformOpen(req, res))) return;
+
+      const settings = await getPlatformSettings();
+      if (!assertTradingEnabled(settings, res)) return;
+      if (!(await assertKycIfRequired(userId, settings, res))) return;
+
+      let orderTotal = parseFloat(total);
+      let feeNote = null;
+      if (type === 'buy') {
+        const { fee, totalWithFee } = calcTradingFee(orderTotal, settings);
+        orderTotal = totalWithFee;
+        if (fee > 0) feeNote = `Trading fee: $${fee.toFixed(2)}`;
+      }
+
       // Buy orders: reserve the total cost from the user's balance atomically.
       // Uses SELECT ... FOR UPDATE so concurrent buy submissions queue up and
       // each one sees the already-reduced balance from the previous.
@@ -67,7 +88,7 @@ router.post(
             'SELECT balance FROM users WHERE id = ? FOR UPDATE',
             [userId]
           );
-          if (!user || user.balance < total) {
+          if (!user || user.balance < orderTotal) {
             await conn.rollback();
             conn.release();
             return res.status(422).json({
@@ -76,15 +97,14 @@ router.post(
             });
           }
 
-          // Deduct the order total immediately (reserved until filled or cancelled)
           await conn.query(
             'UPDATE users SET balance = balance - ? WHERE id = ?',
-            [total, userId]
+            [orderTotal, userId]
           );
 
           const [result] = await conn.query(
             'INSERT INTO orders (user_id, type, coin, price, amount, total, status) VALUES (?,?,?,?,?,?,?)',
-            [userId, type, coin, price, amount, total, 'open']
+            [userId, type, coin, price, amount, orderTotal, 'open']
           );
 
           await conn.commit();
@@ -95,13 +115,13 @@ router.post(
           createUserNotification({
             userId,
             title: `Buy Order Placed — ${coin}`,
-            message: `Buy order for ${amount} ${coin} at $${parseFloat(price).toFixed(2)} (Total: $${parseFloat(total).toFixed(2)}) is open.`,
+            message: `Buy order for ${amount} ${coin} at $${parseFloat(price).toFixed(2)} (Total: $${orderTotal.toFixed(2)}${feeNote ? `, ${feeNote}` : ''}) is open.`,
             type: 'order',
             relatedId: result.insertId,
             relatedType: 'order',
           }).catch(err => console.error('[Notification Error]', err));
 
-          emailService.sendBuyOrderNotification(userId, coin, amount, price, total, 'open')
+          emailService.sendBuyOrderNotification(userId, coin, amount, price, orderTotal, 'open')
             .catch(emailErr => console.error('[Email Error]', emailErr));
 
           return res.status(201).json({ success: true, data: row });

@@ -16,6 +16,12 @@ const { scheduleAutoClose,
   getDurationSeconds,
 } = require('../services/tradeAutoClose');
 const { buildUpdate, BOT_TRADES_WHITELIST, BOT_TRADES_FIELD_MAP } = require('../utils/buildUpdate');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const {
+  assertPlatformOpen,
+  assertBotTradingEnabled,
+  assertKycIfRequired,
+} = require('../utils/platformGuards');
 
 const router = express.Router();
 router.use(authenticate);
@@ -138,6 +144,12 @@ router.post(
       if (req.user.role !== 'Admin' && req.user.id !== userId) {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
+
+      if (!(await assertPlatformOpen(req, res))) return;
+
+      const settings = await getPlatformSettings();
+      if (!assertBotTradingEnabled(settings, res)) return;
+      if (!(await assertKycIfRequired(userId, settings, res))) return;
 
       const id = uuidv4();
       const tradeStatus = status || 'open';

@@ -83,4 +83,20 @@ router.patch(
   }
 );
 
+// ── DELETE /wallets  (Admin only — delete ALL) ─────────────────
+router.delete('/', requireAdmin, async (req, res, next) => {
+  if (req.body?.confirm !== true) {
+    return res.status(400).json({
+      success: false,
+      message: 'Bulk delete requires { "confirm": true } in the request body.',
+    });
+  }
+  try {
+    await pool.query('DELETE FROM wallets');
+    res.json({ success: true, message: 'All wallets deleted' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

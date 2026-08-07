@@ -2,8 +2,14 @@ const express = require('express');
 const { query, body, param } = require('express-validator');
 const pool = require('../db/pool');
 const validate = require('../middleware/validate');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { buildUpdate, BOT_SETTINGS_WHITELIST, BOT_SETTINGS_FIELD_MAP } = require('../utils/buildUpdate');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const {
+  assertPlatformOpen,
+  assertBotTradingEnabled,
+  assertKycIfRequired,
+} = require('../utils/platformGuards');
 
 const router = express.Router();
 router.use(authenticate);
@@ -142,6 +148,14 @@ router.patch(
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
+      const enablingBot = req.body.running === true || req.body.running === 1;
+      if (enablingBot) {
+        if (!(await assertPlatformOpen(req, res))) return;
+        const platformSettings = await getPlatformSettings();
+        if (!assertBotTradingEnabled(platformSettings, res)) return;
+        if (!(await assertKycIfRequired(settings.user_id, platformSettings, res))) return;
+      }
+
       const result = buildUpdate(req.body, BOT_SETTINGS_WHITELIST, BOT_SETTINGS_FIELD_MAP);
       if (!result) {
         return res.status(400).json({ success: false, message: 'No valid fields' });
@@ -155,5 +169,28 @@ router.patch(
     }
   }
 );
+
+// ── DELETE /botSettings  (Admin only — reset all bot configs, keep rows) ──
+router.delete('/', requireAdmin, async (req, res, next) => {
+  if (req.body?.confirm !== true) {
+    return res.status(400).json({
+      success: false,
+      message: 'Bulk delete requires { "confirm": true } in the request body.',
+    });
+  }
+  try {
+    await pool.query(`
+      UPDATE bot_settings SET
+        running = 0,
+        strategy = 'AI Scalper Pro',
+        risk_level = 'Moderate',
+        pair = 'BTC/USDT',
+        timeframe = '1h'
+    `);
+    res.json({ success: true, message: 'All bot settings reset to defaults' });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;

@@ -5,6 +5,13 @@ const validate = require('../middleware/validate');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const createAdminNotification = require('../utils/createAdminNotification');
 const createUserNotification = require('../utils/createUserNotification');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const {
+  assertPlatformOpen,
+  assertTradingEnabled,
+  assertKycIfRequired,
+  calcTradingFee,
+} = require('../utils/platformGuards');
 
 const router = express.Router();
 router.use(authenticate);
@@ -55,10 +62,21 @@ router.post(
       if (req.user.role !== 'Admin' && req.user.id !== userId) {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
+
+      if (!(await assertPlatformOpen(req, res))) return;
+
+      const settings = await getPlatformSettings();
+      if (!assertTradingEnabled(settings, res)) return;
+      if (!(await assertKycIfRequired(userId, settings, res))) return;
+
+      const subtotal = parseFloat(totalCost);
+      const { fee, totalWithFee } = calcTradingFee(subtotal, settings);
+      const storedTotal = totalWithFee;
+
       const [result] = await pool.query(
         `INSERT INTO purchases (user_id, type, symbol, name, color, quantity, price, total_cost, date, time, tx_id, status)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [userId, type, symbol, name, color || null, quantity, price, totalCost,
+        [userId, type, symbol, name, color || null, quantity, price, storedTotal,
          date || null, time || null, txId, status || 'pending']
       );
       const [[row]] = await pool.query('SELECT * FROM purchases WHERE id = ?', [result.insertId]);
@@ -68,7 +86,7 @@ router.post(
       const userName = user ? `${user.first_name} ${user.last_name}` : `User #${userId}`;
       createAdminNotification({
         title: 'New Buy Order',
-        message: `${userName} placed a buy order for ${quantity} ${symbol} (${name}) at $${parseFloat(price).toFixed(2)} each.`,
+        message: `${userName} placed a buy order for ${quantity} ${symbol} (${name}) at $${parseFloat(price).toFixed(2)} each${fee > 0 ? ` (fee: $${fee.toFixed(2)})` : ''}.`,
         type: type === 'buy_crypto' ? 'buy_crypto' : 'buy_stocks',
         relatedId: result.insertId,
         relatedType: 'purchase',

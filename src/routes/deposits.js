@@ -6,6 +6,12 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 const createUserNotification = require('../utils/createUserNotification');
 const emailService = require('../services/emailService');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const {
+  assertPlatformOpen,
+  assertKycIfRequired,
+  calcWithdrawalDeduction,
+} = require('../utils/platformGuards');
 
 const router = express.Router();
 router.use(authenticate);
@@ -59,8 +65,13 @@ router.post(
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
+      if (!(await assertPlatformOpen(req, res))) return;
+
+      const settings = await getPlatformSettings();
+
+      if (type === 'withdraw' && !(await assertKycIfRequired(userId, settings, res))) return;
+
       // Check platform limits
-      const [[settings]] = await pool.query('SELECT * FROM platform_settings LIMIT 1');
       if (settings) {
         if (type === 'deposit' && !settings.deposits_enabled) {
           return res.status(403).json({ success: false, message: 'Deposits are currently disabled' });
@@ -86,29 +97,33 @@ router.post(
       // to prevent double-spend if the user submits multiple requests concurrently.
       // The reserved amount is deducted now and refunded if the request is rejected.
       if (type === 'withdraw') {
+        const { fee, totalDeducted } = calcWithdrawalDeduction(amount, settings);
         const conn = await pool.getConnection();
         try {
           await conn.beginTransaction();
 
-          // Lock the user row so concurrent withdrawal submissions queue up
           const [[user]] = await conn.query('SELECT balance FROM users WHERE id = ? FOR UPDATE', [userId]);
-          if (!user || user.balance < amount) {
+          if (!user || user.balance < totalDeducted) {
             await conn.rollback();
             conn.release();
+            const feeMsg = fee > 0 ? ` (includes $${fee.toFixed(2)} withdrawal fee)` : '';
             return res.status(422).json({
               success: false,
-              message: 'Insufficient balance for withdrawal',
+              message: `Insufficient balance for withdrawal${feeMsg}`,
             });
           }
 
-          // Deduct immediately — this is the reservation
-          await conn.query('UPDATE users SET balance = balance - ? WHERE id = ?', [amount, userId]);
+          await conn.query('UPDATE users SET balance = balance - ? WHERE id = ?', [totalDeducted, userId]);
+
+          const withdrawNote = fee > 0
+            ? [note, `Withdrawal fee: $${fee.toFixed(2)}`].filter(Boolean).join(' | ')
+            : (note || null);
 
           const [result] = await conn.query(
             `INSERT INTO deposits (user_id, type, method, amount, currency, status, date, time, tx_id, note, screenshot)
              VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
             [userId, type, method, amount, currency || 'USD', 'pending',
-             date || null, time || null, txId, note || null, screenshot || null]
+             date || null, time || null, txId, withdrawNote, screenshot || null]
           );
 
           await conn.commit();

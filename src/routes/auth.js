@@ -8,6 +8,8 @@ const { authenticate } = require('../middleware/auth');
 const createAdminNotification = require('../utils/createAdminNotification');
 const createUserNotification = require('../utils/createUserNotification');
 const emailService = require('../services/emailService');
+const { getPlatformSettings } = require('../utils/getPlatformSettings');
+const { getJwtExpiresIn, getLoginMaxAttempts, getLoginLockoutMinutes } = require('../utils/platformGuards');
 
 const router = express.Router();
 
@@ -192,7 +194,7 @@ router.post(
       const token = jwt.sign(
         { id: userId, email, role: 'Member' },
         process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: getJwtExpiresIn(await getPlatformSettings()) }
       );
 
       return res.status(201).json({ success: true, token, userId });
@@ -203,9 +205,8 @@ router.post(
 );
 
 // ── POST /auth/login ─────────────────────────────────────────
-// Per-account brute-force constants
-const LOGIN_MAX_ATTEMPTS  = parseInt(process.env.LOGIN_MAX_ATTEMPTS)  || 10;
-const LOGIN_LOCKOUT_MINS  = parseInt(process.env.LOGIN_LOCKOUT_MINS)  || 15;
+// Per-account brute-force — max attempts from platform_settings (admin Security tab)
+const LOGIN_LOCKOUT_MINS = getLoginLockoutMinutes();
 
 router.post(
   '/login',
@@ -217,6 +218,8 @@ router.post(
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
+      const platformSettings = await getPlatformSettings();
+      const loginMaxAttempts = getLoginMaxAttempts(platformSettings);
 
       // SELECT * so the query doesn't fail if the brute-force columns
       // (failed_login_attempts, locked_until) haven't been migrated yet.
@@ -254,7 +257,7 @@ router.post(
         // Wrapped in try/catch — if the columns don't exist yet, just return 401.
         try {
           const attempts = (user.failed_login_attempts || 0) + 1;
-          if (attempts >= LOGIN_MAX_ATTEMPTS) {
+          if (attempts >= loginMaxAttempts) {
             const lockedUntil = new Date(Date.now() + LOGIN_LOCKOUT_MINS * 60 * 1000);
             await pool.query(
               'UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?',
@@ -282,7 +285,7 @@ router.post(
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: getJwtExpiresIn(platformSettings) }
       );
 
       // Welcome-back notification: throttled to once per day

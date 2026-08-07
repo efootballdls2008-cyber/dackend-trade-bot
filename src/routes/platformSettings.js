@@ -3,6 +3,8 @@ const { body } = require('express-validator');
 const pool = require('../db/pool');
 const validate = require('../middleware/validate');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { getPlatformSettings, invalidatePlatformSettingsCache } = require('../utils/getPlatformSettings');
+const { validateLimitRanges } = require('../utils/platformGuards');
 
 const router = express.Router();
 router.use(authenticate);
@@ -91,8 +93,16 @@ router.patch(
       if (!Object.keys(updates).length) {
         return res.status(400).json({ success: false, message: 'No valid fields' });
       }
+
+      const current = await getPlatformSettings({ fresh: true });
+      const rangeError = validateLimitRanges(updates, current);
+      if (rangeError) {
+        return res.status(422).json({ success: false, message: rangeError });
+      }
+
       const set = Object.keys(updates).map((k) => `\`${k}\` = ?`).join(', ');
       await pool.query(`UPDATE platform_settings SET ${set} LIMIT 1`, Object.values(updates));
+      invalidatePlatformSettingsCache();
       const [[updated]] = await pool.query('SELECT * FROM platform_settings LIMIT 1');
 
       // ── Propagate bot defaults to all existing user bot_settings rows ──

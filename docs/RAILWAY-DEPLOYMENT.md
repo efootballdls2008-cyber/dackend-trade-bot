@@ -315,7 +315,19 @@ After the backend is live, point the frontends at your Railway URL.
 
 ### Client app (`charles-schwab`)
 
-The client uses a Vercel rewrite so `/api/*` proxies to Railway.
+The client can call Railway **directly** (recommended — same as admin) or use a Vercel `/api` rewrite.
+
+**Option A — direct API URL (recommended)**
+
+**File:** `charles-schwab/.env.production` (and Vercel → Settings → Environment Variables)
+
+```env
+VITE_API_URL=https://YOUR-RAILWAY-DOMAIN.up.railway.app
+```
+
+Redeploy the client on Vercel after updating the variable.
+
+**Option B — Vercel proxy** (`VITE_API_URL=/api`)
 
 **File:** `charles-schwab/vercel.json`
 
@@ -331,14 +343,14 @@ The client uses a Vercel rewrite so `/api/*` proxies to Railway.
 }
 ```
 
-**File:** `charles-schwab/.env.production`
+**File:** `charles-schwab/.env.production` (only if using Option B)
 
 ```env
 VITE_API_URL=/api
 API_TARGET=https://YOUR-RAILWAY-DOMAIN.up.railway.app
 ```
 
-Redeploy the client on Vercel after updating `vercel.json`.
+Redeploy the client on Vercel after updating `vercel.json` and env vars.
 
 ### Admin app (`schwab-admin`)
 
@@ -381,6 +393,21 @@ railway link
 ```
 
 Select your project and the **backend service** when prompted.
+
+### Bootstrap empty database (first deploy)
+
+If login returns `Table 'railway.users' doesn't exist`, the production MySQL database was never initialized:
+
+```bash
+./run-railway-bootstrap.sh
+```
+
+Or manually with admin seed vars from Railway:
+
+```bash
+ADMIN_SEED_EMAIL=your@email.com ADMIN_SEED_PASSWORD=your_password \
+  railway run --service MySQL node bootstrap-railway-db.js
+```
 
 ### Run migrations
 
@@ -500,7 +527,8 @@ Ensure you run commands from the `schwab-dackend/` directory after `railway link
 |------|---------|
 | `schwab-dackend/.env.example` | All supported environment variables |
 | `schwab-dackend/.env.production` | Example Railway production values (do not commit secrets) |
-| `schwab-dackend/run-railway-migration.sh` | Shell wrapper for CLI migrations |
+| `schwab-dackend/bootstrap-railway-db.js` | One-time full schema bootstrap for empty Railway MySQL |
+| `schwab-dackend/run-railway-bootstrap.sh` | Shell wrapper for database bootstrap |
 | `schwab-dackend/migrate-production.js` | Production ALTER/CREATE migrations |
 | `schwab-dackend/add-production-accounts.js` | Seed platform bank accounts |
 | `schwab-dackend/Dockerfile` | Optional Docker build (Nixpacks used by default) |
