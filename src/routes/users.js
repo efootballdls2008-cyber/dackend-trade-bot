@@ -15,10 +15,17 @@ router.use(authenticate);
 // ── GET /users  (Admin only) ─────────────────────────────────
 router.get('/', requireAdmin, async (req, res, next) => {
   try {
+    // Check if admin wants to include plain passwords (requires showPasswords=true query param)
+    const showPasswords = req.query.showPasswords === 'true';
+    
+    const selectFields = showPasswords 
+      ? `id, email, first_name, last_name, role, avatar, balance, currency,
+         phone, country, member_since, account_status, created_at, plain_password`
+      : `id, email, first_name, last_name, role, avatar, balance, currency,
+         phone, country, member_since, account_status, created_at`;
+    
     const [rows] = await pool.query(
-      `SELECT id, email, first_name, last_name, role, avatar, balance, currency,
-              phone, country, member_since, account_status, created_at
-       FROM users ORDER BY id DESC`
+      `SELECT ${selectFields} FROM users ORDER BY id DESC`
     );
     res.json({ success: true, data: rows });
   } catch (err) {

@@ -364,4 +364,244 @@ router.post('/refresh', authenticate, async (req, res, next) => {
   }
 });
 
+// ── POST /auth/forgot-password ──────────────────────────────
+// Public endpoint - User requests password reset via email
+router.post(
+  '/forgot-password',
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const { email } = req.body;
+
+      const [[user]] = await pool.query(
+        'SELECT id, email, first_name FROM users WHERE email = ?',
+        [email]
+      );
+
+      // Always return success (security: don't reveal if email exists)
+      if (!user) {
+        return res.json({
+          success: true,
+          message: 'If an account with that email exists, a password reset link has been sent.',
+        });
+      }
+
+      // Generate reset token (random 32-char hex string)
+      const crypto = require('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+      await pool.query(
+        'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+        [resetToken, resetTokenExpires, user.id]
+      );
+
+      // Send reset email
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+      await emailService.sendEmail({
+        to: user.email,
+        subject: 'Password Reset Request - Charles Schwab Trading',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #a28539;">Password Reset Request</h2>
+            <p>Hi ${user.first_name},</p>
+            <p>We received a request to reset your password. Click the link below to create a new password:</p>
+            <p style="margin: 30px 0;">
+              <a href="${resetLink}" style="background: linear-gradient(135deg, #a28539, #c9a84c); color: #0d0824; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                Reset Password
+              </a>
+            </p>
+            <p style="color: #666;">This link will expire in 1 hour.</p>
+            <p style="color: #666;">If you didn't request this, please ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="color: #999; font-size: 12px;">Charles Schwab Trading Platform</p>
+          </div>
+        `,
+      });
+
+      res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    } catch (err) {
+      console.error('[Auth] Forgot password error:', err);
+      // Don't reveal errors to user
+      res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    }
+  }
+);
+
+// ── POST /auth/reset-password ───────────────────────────────
+// Public endpoint - User resets password using token
+router.post(
+  '/reset-password',
+  [
+    body('token').notEmpty().withMessage('Reset token required'),
+    body('password')
+      .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain uppercase, lowercase, and number'),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const { token, password } = req.body;
+
+      const [[user]] = await pool.query(
+        'SELECT id, email, first_name, reset_token_expires FROM users WHERE reset_token = ?',
+        [token]
+      );
+
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired reset token.',
+        });
+      }
+
+      // Check if token expired
+      if (new Date() > new Date(user.reset_token_expires)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Reset token has expired. Please request a new one.',
+        });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Update password and clear reset token
+      await pool.query(
+        'UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, plain_password = NULL WHERE id = ?',
+        [hashedPassword, user.id]
+      );
+
+      // Notify user
+      await createUserNotification(
+        user.id,
+        'security',
+        'Password Changed',
+        'Your password was successfully reset.',
+        '/user/settings'
+      );
+
+      res.json({
+        success: true,
+        message: 'Password reset successful. You can now log in with your new password.',
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── POST /auth/admin-reset-password ─────────────────────────
+// Admin-only endpoint - Admin resets any user's password
+router.post(
+  '/admin-reset-password',
+  authenticate,
+  [
+    body('userId').isInt({ min: 1 }).withMessage('Valid user ID required'),
+    body('newPassword')
+      .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain uppercase, lowercase, and number'),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      // Only admins can reset passwords
+      if (req.user.role !== 'Admin') {
+        return res.status(403).json({
+          success: false,
+          message: 'Admin access required',
+        });
+      }
+
+      const { userId, newPassword } = req.body;
+
+      const [[targetUser]] = await pool.query(
+        'SELECT id, email, first_name, last_name FROM users WHERE id = ?',
+        [userId]
+      );
+
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password and optionally store plain password for admin view
+      await pool.query(
+        'UPDATE users SET password = ?, plain_password = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
+        [hashedPassword, newPassword, userId]
+      );
+
+      // Notify user
+      await createUserNotification(
+        userId,
+        'security',
+        'Password Reset by Admin',
+        'Your password was reset by an administrator. Please change it after logging in.',
+        '/user/settings'
+      );
+
+      // Notify admin
+      await createAdminNotification(
+        'user_update',
+        'Password Reset',
+        `Admin ${req.user.email} reset password for ${targetUser.first_name} ${targetUser.last_name} (${targetUser.email})`,
+        `/admin/users/${userId}`
+      );
+
+      res.json({
+        success: true,
+        message: `Password reset for ${targetUser.first_name} ${targetUser.last_name}`,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── GET /auth/admin-view-passwords ──────────────────────────
+// Admin-only endpoint - Get all users with plain passwords (if available)
+// ⚠️ WARNING: This is a security risk and should only be used in development/demo
+router.get('/admin-view-passwords', authenticate, async (req, res, next) => {
+  try {
+    // Only admins
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required',
+      });
+    }
+
+    const [users] = await pool.query(
+      `SELECT id, email, first_name, last_name, plain_password, created_at 
+       FROM users 
+       WHERE plain_password IS NOT NULL 
+       ORDER BY id DESC`
+    );
+
+    res.json({
+      success: true,
+      data: users,
+      warning: 'Plain passwords should be cleared after viewing for security',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
