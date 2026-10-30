@@ -36,6 +36,7 @@ const adminActionRoutes     = require('./routes/adminActions');
 const exchangeRateRoutes    = require('./routes/exchangeRates');
 const kycRoutes             = require('./routes/kyc');
 const tickerRoutes          = require('./routes/ticker');
+const supportRoutes         = require('./routes/support');
 const { restoreOpenTrades } = require('./services/tradeAutoClose');
 
 const app = express();
@@ -160,6 +161,7 @@ app.use('/adminActions',      adminActionRoutes);
 app.use('/exchange-rates',   exchangeRateRoutes);
 app.use('/kyc',               kycRoutes);
 app.use('/ticker',            tickerRoutes);
+app.use('/support',           supportRoutes);
 app.use('/notifications',        buildNotificationRoutes('user_notifications'));
 app.use('/userNotifications',    buildNotificationRoutes('user_notifications'));
 app.use('/adminNotifications',   adminNotifRouter);

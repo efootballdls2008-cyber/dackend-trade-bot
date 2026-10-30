@@ -1,10 +1,10 @@
 /**
  * Email Service
- * Handles all email notifications for the platform using Resend
+ * Handles all email notifications for the platform using Gmail SMTP
  * Brand: Charles Schwab Trading Platform
  * Colors: #0d0824 bg | #a28539 gold | #4ade80 green | #f59e0b amber | #f87171 red
  */
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -14,9 +14,9 @@ const YEAR = new Date().getFullYear();
 
 class EmailService {
   constructor() {
-    this.resend = null;
+    this.transporter = null;
     this.initialized = false;
-    this.fromEmail  = process.env.EMAIL_FROM      || 'onboarding@resend.dev';
+    this.fromEmail  = process.env.EMAIL_FROM      || process.env.EMAIL_USER || 'noreply@schwab-trading.com';
     this.fromName   = process.env.EMAIL_FROM_NAME || 'Charles Schwab Trading Platform';
     this.adminEmail = process.env.ADMIN_EMAIL     || 'admin@schwab-trading.com';
   }
@@ -30,39 +30,65 @@ class EmailService {
       console.log('[EmailService] Email notifications disabled');
       return;
     }
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      console.error('[EmailService] RESEND_API_KEY not set — emails will not be sent');
+    
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    
+    if (!emailUser || !emailPass) {
+      console.error('[EmailService] EMAIL_USER or EMAIL_PASS not set — emails will not be sent');
       return;
     }
+    
     try {
-      this.resend = new Resend(apiKey);
-      this.initialized = true;
-      console.log('[EmailService] Resend initialized successfully');
+      this.transporter = nodemailer.createTransport({
+        service: process.env.EMAIL_SERVICE || 'gmail',
+        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: parseInt(process.env.EMAIL_PORT || '587'),
+        secure: process.env.EMAIL_SECURE === 'true',
+        auth: {
+          user: emailUser,
+          pass: emailPass,
+        },
+      });
+      
+      this.transporter.verify((error, success) => {
+        if (error) {
+          console.error('[EmailService] SMTP verification failed:', error);
+        } else {
+          console.log('[EmailService] SMTP initialized successfully');
+          this.initialized = true;
+        }
+      });
     } catch (err) {
-      console.error('[EmailService] Failed to initialize Resend:', err.message);
+      console.error('[EmailService] Failed to initialize SMTP:', err.message);
     }
   }
 
   // ─────────────────────────────────────────────────────────────
   // Core send
   // ─────────────────────────────────────────────────────────────
-  async sendEmail({ to, subject, html, text }) {
-    if (!this.initialized || !this.resend) {
+  async sendEmail({ to, subject, html, text, replyTo }) {
+    if (!this.initialized || !this.transporter) {
       console.log('[EmailService] Email not sent — service not initialized');
       return { success: false, error: 'Email service not initialized' };
     }
     try {
-      const { data, error } = await this.resend.emails.send({
-        from: `${this.fromName} <${this.fromEmail}>`,
+      const mailOptions = {
+        from: `"${this.fromName}" <${this.fromEmail}>`,
         to,
         subject,
         html,
         text: text || this.stripHtml(html),
-      });
-      if (error) throw new Error(error.message || JSON.stringify(error));
-      await this.logEmail({ recipient: to, subject, status: 'sent', messageId: data.id });
-      return { success: true, messageId: data.id };
+      };
+      
+      if (replyTo) {
+        mailOptions.replyTo = replyTo;
+      }
+      
+      const info = await this.transporter.sendMail(mailOptions);
+      await this.logEmail({ recipient: to, subject, status: 'sent', messageId: info.messageId });
+      console.log('[EmailService] Email sent:', info.messageId);
+      return { success: true, messageId: info.messageId };
     } catch (err) {
       console.error('[EmailService] Failed to send email:', err.message);
       await this.logEmail({ recipient: to, subject, status: 'failed', error: err.message });
