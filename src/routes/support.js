@@ -1,56 +1,119 @@
 const express = require('express');
 const { body } = require('express-validator');
 const validate = require('../middleware/validate');
+const { authenticate } = require('../middleware/auth');
 const emailService = require('../services/emailService');
+const notificationService = require('../services/notificationService');
+const pool = require('../db/pool');
 
 const router = express.Router();
 
-// POST /api/support - Send support message to admin
+// Subject options
+const SUBJECT_OPTIONS = [
+  'Account Issue',
+  'Deposit / Withdrawal',
+  'Trading Problem',
+  'KYC Verification',
+  'Technical Issue',
+  'Billing',
+  'Other'
+];
+
+// POST /support - Authenticated user support request
 router.post(
   '/',
+  authenticate,
   [
-    body('name').trim().notEmpty().withMessage('Name required'),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-    body('subject').trim().notEmpty().withMessage('Subject required'),
-    body('message').trim().notEmpty().withMessage('Message required'),
+    body('subject')
+      .trim()
+      .notEmpty()
+      .withMessage('Subject required')
+      .isIn(SUBJECT_OPTIONS)
+      .withMessage('Invalid subject category'),
+    body('message')
+      .trim()
+      .isLength({ min: 10, max: 2000 })
+      .withMessage('Message must be 10-2000 characters'),
+    body('priority')
+      .optional()
+      .isIn(['low', 'medium', 'high'])
+      .withMessage('Invalid priority level'),
   ],
   validate,
   async (req, res, next) => {
     try {
-      const { name, email, subject, message } = req.body;
+      const { subject, message, priority = 'medium' } = req.body;
+      const userId = req.user.id;
 
-      const supportEmail = process.env.SUPPORT_EMAIL || process.env.ADMIN_EMAIL;
+      // Get user info
+      const [[user]] = await pool.query(
+        'SELECT id, email, first_name, last_name, is_verified FROM users WHERE id = ?',
+        [userId]
+      );
 
-      const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif;padding:20px;background:#f8fafc;">
-  <div style="max-width:600px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    <h2 style="color:#0d0824;margin-top:0;">🆘 New Support Message</h2>
-    <div style="background:#f8fafc;padding:15px;border-left:4px solid #a28539;margin:20px 0;">
-      <p style="margin:0;"><strong>From:</strong> ${name}</p>
-      <p style="margin:5px 0 0;"><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
-    </div>
-    <h3 style="color:#0d0824;">Subject:</h3>
-    <p style="color:#1e293b;">${subject}</p>
-    <h3 style="color:#0d0824;">Message:</h3>
-    <p style="color:#1e293b;white-space:pre-wrap;">${message}</p>
-    <hr style="border:none;border-top:1px solid #e2e8f0;margin:25px 0;">
-    <p style="color:#64748b;font-size:13px;margin:0;">Reply directly to this email to respond to ${name}.</p>
-  </div>
-</body>
-</html>`;
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
 
-      await emailService.sendEmail({
-        to: supportEmail,
-        subject: `[Support] ${subject}`,
-        html,
-        replyTo: email,
+      // Generate ticket reference
+      const timestamp = Date.now();
+      const ticketRef = `SUP-${timestamp}-${userId}`;
+
+      // Optional: Save to database (if support_messages table exists)
+      try {
+        await pool.query(
+          `INSERT INTO support_messages (user_id, ticket_ref, subject, message, priority, status)
+           VALUES (?, ?, ?, ?, ?, 'pending')`,
+          [userId, ticketRef, subject, message, priority]
+        );
+      } catch (dbErr) {
+        // Non-fatal — if the table doesn't exist, just skip DB storage
+        console.warn('[Support] Could not save to database:', dbErr.message);
+      }
+
+      // Send branded email to admin
+      await emailService.sendSupportRequestEmail({
+        ticketRef,
+        subject,
+        message,
+        priority,
+        user: {
+          id: user.id,
+          fullName: `${user.first_name} ${user.last_name}`,
+          email: user.email,
+          isVerified: user.is_verified
+        }
+      });
+
+      // Create admin notification
+      await notificationService.createAdminNotification({
+        title: 'New Support Request',
+        message: `${user.first_name} ${user.last_name} submitted a support request: ${subject}`,
+        type: 'support_request',
+        priority,
+        relatedId: ticketRef,
+        relatedType: 'support_ticket',
+        userId,
+        metadata: { ticketRef, subject, message }
+      });
+
+      // Create user confirmation notification
+      await notificationService.createUserNotification({
+        userId,
+        title: 'Support Request Received',
+        message: `Your support request has been submitted. Reference: ${ticketRef}`,
+        type: 'system',
+        category: 'system_alerts',
+        priority: 'medium',
+        relatedId: ticketRef,
+        relatedType: 'support_ticket',
+        metadata: { ticketRef, subject }
       });
 
       res.json({
         success: true,
-        message: 'Support message sent successfully',
+        message: 'Support request submitted successfully',
+        ticketRef
       });
     } catch (err) {
       next(err);

@@ -489,6 +489,143 @@ class EmailService {
     });
   }
 
+  /** 8. Support Request Email to Admin */
+  async sendSupportRequestEmail({ ticketRef, subject, message, priority, user }) {
+    const date = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Priority color mapping
+    const priorityColors = {
+      high: { color: '#f87171', bg: '#450a0a', label: 'HIGH' },
+      medium: { color: '#f59e0b', bg: '#451a03', label: 'MEDIUM' },
+      low: { color: '#4ade80', bg: '#052e16', label: 'LOW' }
+    };
+    const prio = priorityColors[priority] || priorityColors.medium;
+
+    // Escape HTML for user-generated content
+    const escapeHtml = (str) =>
+      String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+</head>
+<body style="margin:0;padding:20px;background-color:#0f172a;font-family:Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.5);">
+    
+    <!-- Header -->
+    <div style="background-color:#0d0824;padding:30px 25px;text-align:center;">
+      <h1 style="color:#a28539;margin:0;font-size:28px;font-family:Arial,sans-serif;letter-spacing:2px;font-weight:700;">
+        CHARLES SCHWAB
+      </h1>
+      <p style="color:#cbd5e1;margin-top:6px;font-size:13px;font-family:Arial,sans-serif;letter-spacing:0.5px;">
+        Smart Trading • Crypto • Stocks
+      </p>
+    </div>
+
+    <!-- Alert Banner -->
+    <div style="background:${prio.bg};border-left:4px solid ${prio.color};padding:14px 18px;">
+      <p style="margin:0;color:${prio.color};font-weight:700;font-size:14px;">
+        🎫 New Support Request — ${escapeHtml(subject)}
+      </p>
+    </div>
+
+    <!-- Body -->
+    <div style="background-color:#ffffff;padding:35px 30px;color:#1e293b;line-height:1.75;font-size:15px;">
+      <h2 style="color:#0d0824;margin-top:0;">Support Request Received</h2>
+      <p>A user has submitted a support request and needs assistance.</p>
+
+      <!-- Detail Box -->
+      <table style="width:100%;border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin:20px 0;overflow:hidden;">
+        <tbody>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;border-bottom:1px solid #e2e8f0;">Ticket Ref:</td>
+            <td style="padding:10px 14px;color:#0d0824;font-size:13px;font-family:monospace;font-weight:700;border-bottom:1px solid #e2e8f0;">${escapeHtml(ticketRef)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;border-bottom:1px solid #e2e8f0;">Subject:</td>
+            <td style="padding:10px 14px;color:#1e293b;font-size:13px;border-bottom:1px solid #e2e8f0;">${escapeHtml(subject)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;border-bottom:1px solid #e2e8f0;">Priority:</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">
+              <span style="display:inline-block;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;background:${prio.bg};color:${prio.color};letter-spacing:0.5px;">
+                ${prio.label}
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;border-bottom:1px solid #e2e8f0;">Full Name:</td>
+            <td style="padding:10px 14px;color:#1e293b;font-size:13px;border-bottom:1px solid #e2e8f0;">${escapeHtml(user.fullName)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;border-bottom:1px solid #e2e8f0;">Email:</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">
+              <a href="mailto:${escapeHtml(user.email)}" style="color:#a28539;text-decoration:none;font-size:13px;">${escapeHtml(user.email)}</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;border-bottom:1px solid #e2e8f0;">User ID:</td>
+            <td style="padding:10px 14px;color:#1e293b;font-size:13px;border-bottom:1px solid #e2e8f0;">#${user.id}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;color:#64748b;font-size:13px;white-space:nowrap;font-weight:600;">Submitted:</td>
+            <td style="padding:10px 14px;color:#1e293b;font-size:13px;">${date}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Message Box -->
+      <div style="background:#f8fafc;border-left:4px solid #a28539;padding:16px 20px;border-radius:0 6px 6px 0;margin:20px 0;">
+        <h3 style="color:#0d0824;margin:0 0 10px 0;font-size:14px;font-weight:700;">User Message</h3>
+        <p style="color:#1e293b;margin:0;white-space:pre-wrap;font-size:14px;line-height:1.6;">${escapeHtml(message)}</p>
+      </div>
+
+      <!-- Reply Button -->
+      <div style="text-align:center;margin:28px 0 10px;">
+        <a href="mailto:${escapeHtml(user.email)}?subject=Re: ${encodeURIComponent(subject)} [${ticketRef}]" 
+           style="display:inline-block;padding:13px 36px;background:#a28539;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:700;font-size:15px;letter-spacing:0.5px;">
+          Reply to User
+        </a>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+      
+      <p style="color:#94a3b8;font-size:13px;margin:0;text-align:center;">
+        Log in to admin dashboard to view all support tickets and user details.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background-color:#0d0824;padding:25px;text-align:center;font-family:Arial,sans-serif;">
+      <p style="color:#a28539;font-size:15px;margin-bottom:6px;font-weight:700;letter-spacing:1px;">CHARLES SCHWAB</p>
+      <p style="color:#cbd5e1;font-size:12px;margin:4px 0;">Trade Stocks, Crypto &amp; Automated Bot Strategies Securely</p>
+      <p style="color:#64748b;font-size:11px;margin-top:14px;">&copy; ${YEAR} Charles Schwab Trading Platform. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    return this.sendEmail({
+      to: this.adminEmail,
+      subject: `[Support ${prio.label}] ${subject} — Ticket ${ticketRef}`,
+      html,
+      replyTo: user.email
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────
   // ADMIN EMAILS
   // ─────────────────────────────────────────────────────────────
