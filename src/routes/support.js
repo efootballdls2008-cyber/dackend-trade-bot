@@ -19,11 +19,39 @@ const SUBJECT_OPTIONS = [
   'Other'
 ];
 
-// POST /support - Authenticated user support request
+// POST /support - Support request (works for both authenticated and guest users)
 router.post(
   '/',
-  authenticate,
+  // Optional authentication - works for both logged-in and guest users
+  (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+      // Try to authenticate if token is provided
+      const { authenticate } = require('../middleware/auth');
+      return authenticate(req, res, (err) => {
+        if (err) {
+          // Token is invalid, treat as guest
+          req.user = null;
+        }
+        next();
+      });
+    } else {
+      // No token, treat as guest
+      req.user = null;
+      next();
+    }
+  },
   [
+    body('name')
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage('Name must be 1-100 characters'),
+    body('email')
+      .optional()
+      .trim()
+      .isEmail()
+      .withMessage('Valid email required for guest users'),
     body('subject')
       .trim()
       .notEmpty()
@@ -42,22 +70,46 @@ router.post(
   validate,
   async (req, res, next) => {
     try {
-      const { subject, message, priority = 'medium' } = req.body;
-      const userId = req.user.id;
+      const { subject, message, priority = 'medium', name, email } = req.body;
+      
+      let user;
+      let userId = null;
 
-      // Get user info
-      const [[user]] = await pool.query(
-        'SELECT id, email, first_name, last_name, is_verified FROM users WHERE id = ?',
-        [userId]
-      );
-
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'User not found' });
+      if (req.user) {
+        // Authenticated user
+        userId = req.user.id;
+        const [[dbUser]] = await pool.query(
+          'SELECT id, email, first_name, last_name, is_verified FROM users WHERE id = ?',
+          [userId]
+        );
+        if (!dbUser) {
+          return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        user = {
+          id: dbUser.id,
+          fullName: `${dbUser.first_name} ${dbUser.last_name}`,
+          email: dbUser.email,
+          isVerified: dbUser.is_verified
+        };
+      } else {
+        // Guest user - require name and email
+        if (!name || !email) {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Name and email are required for guest users' 
+          });
+        }
+        user = {
+          id: 0, // Guest user
+          fullName: name,
+          email: email,
+          isVerified: false
+        };
       }
 
       // Generate ticket reference
       const timestamp = Date.now();
-      const ticketRef = `SUP-${timestamp}-${userId}`;
+      const ticketRef = `SUP-${timestamp}-${userId || 'GUEST'}`;
 
       // Optional: Save to database (if support_messages table exists)
       try {
@@ -77,38 +129,35 @@ router.post(
         subject,
         message,
         priority,
-        user: {
-          id: user.id,
-          fullName: `${user.first_name} ${user.last_name}`,
-          email: user.email,
-          isVerified: user.is_verified
-        }
+        user
       });
 
-      // Create admin notification
-      await notificationService.createAdminNotification({
-        title: 'New Support Request',
-        message: `${user.first_name} ${user.last_name} submitted a support request: ${subject}`,
-        type: 'support_request',
-        priority,
-        relatedId: ticketRef,
-        relatedType: 'support_ticket',
-        userId,
-        metadata: { ticketRef, subject, message }
-      });
+      // Create admin notification (only if user is authenticated)
+      if (userId) {
+        await notificationService.createAdminNotification({
+          title: 'New Support Request',
+          message: `${user.fullName} submitted a support request: ${subject}`,
+          type: 'support_request',
+          priority,
+          relatedId: ticketRef,
+          relatedType: 'support_ticket',
+          userId,
+          metadata: { ticketRef, subject, message }
+        });
 
-      // Create user confirmation notification
-      await notificationService.createUserNotification({
-        userId,
-        title: 'Support Request Received',
-        message: `Your support request has been submitted. Reference: ${ticketRef}`,
-        type: 'system',
-        category: 'system_alerts',
-        priority: 'medium',
-        relatedId: ticketRef,
-        relatedType: 'support_ticket',
-        metadata: { ticketRef, subject }
-      });
+        // Create user confirmation notification
+        await notificationService.createUserNotification({
+          userId,
+          title: 'Support Request Received',
+          message: `Your support request has been submitted. Reference: ${ticketRef}`,
+          type: 'system',
+          category: 'system_alerts',
+          priority: 'medium',
+          relatedId: ticketRef,
+          relatedType: 'support_ticket',
+          metadata: { ticketRef, subject }
+        });
+      }
 
       res.json({
         success: true,
