@@ -52,6 +52,8 @@ class EmailService {
         connectionTimeout: 10000, // 10 seconds
         greetingTimeout: 5000,     // 5 seconds  
         socketTimeout: 10000,      // 10 seconds
+        // Force IPv4 to avoid Railway IPv6 connectivity issues
+        family: 4,
       };
 
       // Only add service if explicitly set (Gmail service shorthand)

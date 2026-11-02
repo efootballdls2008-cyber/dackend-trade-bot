@@ -82,6 +82,7 @@ const limiter = rateLimit({
   max: parseInt(process.env.RATE_LIMIT_MAX) || 500,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy validation warning
   skip: (req) => {
     // Skip rate limiting for verified admin tokens only.
     // jwt.verify() checks the signature — jwt.decode() does NOT and must never be used here.
@@ -103,6 +104,7 @@ const botLimiter = rateLimit({
   max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { success: false, message: 'Bot rate limit exceeded, please try again later.' },
 });
 
@@ -112,6 +114,7 @@ const tickerLimiter = rateLimit({
   max: 60,             // 60 req/min per IP (1 per second headroom)
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { success: false, message: 'Ticker rate limit exceeded, please slow down.' },
 });
 
@@ -121,6 +124,7 @@ const authLimiter = rateLimit({
   max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 20,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { success: false, message: 'Too many auth attempts, please try again later.' },
 });
 
