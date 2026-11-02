@@ -40,8 +40,7 @@ class EmailService {
     }
     
     try {
-      this.transporter = nodemailer.createTransport({
-        service: process.env.EMAIL_SERVICE || 'gmail',
+      const transportConfig = {
         host: process.env.EMAIL_HOST || 'smtp.gmail.com',
         port: parseInt(process.env.EMAIL_PORT || '587'),
         secure: process.env.EMAIL_SECURE === 'true',
@@ -49,18 +48,36 @@ class EmailService {
           user: emailUser,
           pass: emailPass,
         },
-      });
+        // Add connection timeout and retry settings
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 5000,     // 5 seconds  
+        socketTimeout: 10000,      // 10 seconds
+      };
+
+      // Only add service if explicitly set (Gmail service shorthand)
+      if (process.env.EMAIL_SERVICE && process.env.EMAIL_SERVICE.trim()) {
+        transportConfig.service = process.env.EMAIL_SERVICE;
+      }
+
+      this.transporter = nodemailer.createTransport(transportConfig);
       
+      // Mark as initialized immediately - don't block on verify()
+      this.initialized = true;
+      console.log('[EmailService] SMTP transporter created');
+      
+      // Verify in background (non-blocking)
       this.transporter.verify((error, success) => {
         if (error) {
-          console.error('[EmailService] SMTP verification failed:', error);
+          console.error('[EmailService] SMTP verification failed:', error.message);
+          console.warn('[EmailService] Emails may not be sent. Check SMTP settings and firewall rules.');
+          // Keep initialized = true, will fail gracefully per-email
         } else {
-          console.log('[EmailService] SMTP initialized successfully');
-          this.initialized = true;
+          console.log('[EmailService] SMTP verified successfully');
         }
       });
     } catch (err) {
       console.error('[EmailService] Failed to initialize SMTP:', err.message);
+      this.initialized = false;
     }
   }
 

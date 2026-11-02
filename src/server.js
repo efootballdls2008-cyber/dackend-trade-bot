@@ -42,6 +42,9 @@ const { restoreOpenTrades } = require('./services/tradeAutoClose');
 
 const app = express();
 
+// ── Trust proxy (for Railway/production behind reverse proxy) ─
+app.set('trust proxy', true);
+
 // ── Security & parsing ───────────────────────────────────────
 app.use(helmet());
 
