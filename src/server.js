@@ -15,6 +15,7 @@ const { isAdmin } = require('./middleware/auth');
 const { buildNotificationRoutes, adminNotifRouter } = require('./routes/notifications');
 const notificationSettingsRoutes = require('./routes/notificationSettings');
 const socketService = require('./socket/socketService');
+const emailService = require('./services/emailService');
 
 // ── Route imports ────────────────────────────────────────────
 const authRoutes            = require('./routes/auth');
@@ -481,6 +482,8 @@ async function seedAdmin() {
 const PORT = parseInt(process.env.PORT) || 3001;
 httpServer.listen(PORT, async () => {
   console.log(`[server] Running on http://localhost:${PORT} (${process.env.NODE_ENV || 'development'})`);
+  // Initialize email service
+  emailService.initialize();
   // Run idempotent migrations to ensure all tables/columns exist
   await runMigrations().catch(err => console.error('[migrate] Fatal error:', err.message));
   // Seed default admin account if none exists
