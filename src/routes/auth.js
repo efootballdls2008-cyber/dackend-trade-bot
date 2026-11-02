@@ -592,13 +592,14 @@ router.post(
       );
 
       // Notify user
-      await createUserNotification(
-        user.id,
-        'security',
-        'Password Changed',
-        'Your password was successfully reset.',
-        '/user/settings'
-      );
+      await createUserNotification({
+        userId: user.id,
+        title: 'Password Changed',
+        message: 'Your password was successfully reset.',
+        type: 'security',
+        category: 'system_alerts',
+        priority: 'high',
+      });
 
       res.json({
         success: true,
@@ -656,21 +657,25 @@ router.post(
       );
 
       // Notify user
-      await createUserNotification(
+      await createUserNotification({
         userId,
-        'security',
-        'Password Reset by Admin',
-        'Your password was reset by an administrator. Please change it after logging in.',
-        '/user/settings'
-      );
+        title: 'Password Reset by Admin',
+        message: 'Your password was reset by an administrator. Please change it after logging in.',
+        type: 'security',
+        category: 'system_alerts',
+        priority: 'high',
+      });
 
       // Notify admin
-      await createAdminNotification(
-        'user_update',
-        'Password Reset',
-        `Admin ${req.user.email} reset password for ${targetUser.first_name} ${targetUser.last_name} (${targetUser.email})`,
-        `/admin/users/${userId}`
-      );
+      await createAdminNotification({
+        title: 'Password Reset',
+        message: `Admin ${req.user.email} reset password for ${targetUser.first_name} ${targetUser.last_name} (${targetUser.email})`,
+        type: 'user_update',
+        priority: 'medium',
+        relatedId: userId,
+        relatedType: 'user',
+        userId,
+      });
 
       res.json({
         success: true,
