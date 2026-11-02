@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, param } = require('express-validator');
 const validate = require('../middleware/validate');
-const { authenticate, isAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const pool = require('../db/pool');
@@ -178,7 +178,7 @@ router.post(
 router.get(
   '/admin',
   authenticate,
-  isAdmin,
+  requireAdmin,
   async (req, res, next) => {
     try {
       const { status, priority, search } = req.query;
@@ -241,7 +241,7 @@ router.get(
 router.get(
   '/admin/:id',
   authenticate,
-  isAdmin,
+  requireAdmin,
   [param('id').isInt().withMessage('Invalid ticket ID')],
   validate,
   async (req, res, next) => {
@@ -291,7 +291,7 @@ router.get(
 router.patch(
   '/admin/:id/status',
   authenticate,
-  isAdmin,
+  requireAdmin,
   [
     param('id').isInt().withMessage('Invalid ticket ID'),
     body('status')
@@ -362,7 +362,7 @@ router.patch(
 router.patch(
   '/admin/:id',
   authenticate,
-  isAdmin,
+  requireAdmin,
   [
     param('id').isInt().withMessage('Invalid ticket ID'),
     body('priority').optional().isIn(['low', 'medium', 'high']).withMessage('Invalid priority'),
@@ -418,7 +418,7 @@ router.patch(
 router.delete(
   '/admin/:id',
   authenticate,
-  isAdmin,
+  requireAdmin,
   [param('id').isInt().withMessage('Invalid ticket ID')],
   validate,
   async (req, res, next) => {
@@ -446,7 +446,7 @@ router.delete(
 router.get(
   '/admin/stats/overview',
   authenticate,
-  isAdmin,
+  requireAdmin,
   async (req, res, next) => {
     try {
       const [[stats]] = await pool.query(`
